@@ -2,20 +2,30 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../server.js';
+import { registerValidation, loginValidation } from '../middleware/validation.middleware.js';
+
+// Ensure JWT_SECRET is set
+if (!process.env.JWT_SECRET) {
+  throw new Error('FATAL: JWT_SECRET environment variable is not set.');
+}
+
+const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
+const BCRYPT_ROUNDS = 12; // Increased from default 10 for better security
 
 const router = Router();
 
 // Register
-router.post('/register', async (req, res, next) => {
+router.post('/register', registerValidation, async (req, res, next) => {
   try {
     const { email, password, name, role = 'ADVISOR', category = 'INSURANCE' } = req.body;
 
     const existingUser = await prisma.user.findUnique({ where: { email } });
     if (existingUser) {
-      return res.status(400).json({ error: 'User already exists' });
+      return res.status(400).json({ error: 'Registration failed' });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS);
 
     const user = await prisma.user.create({
       data: {
@@ -52,18 +62,18 @@ router.post('/register', async (req, res, next) => {
 });
 
 // Login
-router.post('/login', async (req, res, next) => {
+router.post('/login', loginValidation, async (req, res, next) => {
   try {
     const { email, password } = req.body;
 
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) {
-      return res.status(401).json({ error: 'Invalid credentials' });
+      return res.status(401).json({ error: 'Authentication failed' });
     }
 
     const isValidPassword = await bcrypt.compare(password, user.password);
     if (!isValidPassword) {
-      return res.status(401).json({ error: 'Invalid credentials' });
+      return res.status(401).json({ error: 'Authentication failed' });
     }
 
     // Check if user is soft-deleted
