@@ -49,11 +49,10 @@ async function main() {
   console.log('✅ Created advisor user:', advisor.email);
 
   // Create company settings
-  const settings = await prisma.companySettings.upsert({
-    where: { id: 'default' },
-    update: {},
-    create: {
-      id: 'default',
+  const existingSettings = await prisma.companySettings.findFirst();
+  
+  const settings = existingSettings || await prisma.companySettings.create({
+    data: {
       phone: '(800) 555-0199',
       email: 'contact@newholland.com',
       address: '123 Finance Way',
