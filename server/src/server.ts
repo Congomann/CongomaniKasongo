@@ -4,7 +4,6 @@ import helmet from 'helmet';
 import compression from 'compression';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
-import path from 'path';
 import { PrismaClient } from '@prisma/client';
 
 // Import routes
@@ -28,8 +27,10 @@ import portfolioRoutes from './routes/portfolio.routes.js';
 import accountingRoutes from './routes/accounting.routes.js';
 import bankingRoutes from './routes/banking.routes.js';
 
-// Error handler
+// Middleware imports
 import { errorHandler } from './middleware/error.middleware.js';
+import { authLimiter, apiLimiter } from './middleware/rateLimiter.middleware.js';
+import { sanitizeHtml } from './middleware/validation.middleware.js';
 
 dotenv.config();
 
