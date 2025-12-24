@@ -26,6 +26,7 @@ import propertyRoutes from './routes/property.routes.js';
 import portfolioRoutes from './routes/portfolio.routes.js';
 import accountingRoutes from './routes/accounting.routes.js';
 import bankingRoutes from './routes/banking.routes.js';
+import aiRoutes from './routes/ai.routes.js';
 
 // Error handler
 import { errorHandler } from './middleware/error.middleware.js';
