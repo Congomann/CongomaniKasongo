@@ -56,14 +56,19 @@ router.post('/login', async (req, res, next) => {
   try {
     const { email, password } = req.body;
 
+    // Input validation
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Missing credentials' });
+    }
+
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) {
-      return res.status(401).json({ error: 'Invalid credentials' });
+      return res.status(401).json({ error: 'Authentication failed' });
     }
 
     const isValidPassword = await bcrypt.compare(password, user.password);
     if (!isValidPassword) {
-      return res.status(401).json({ error: 'Invalid credentials' });
+      return res.status(401).json({ error: 'Authentication failed' });
     }
 
     // Check if user is soft-deleted
