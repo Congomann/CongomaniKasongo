@@ -56,19 +56,14 @@ router.post('/login', async (req, res, next) => {
   try {
     const { email, password } = req.body;
 
-    // Input validation
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Missing credentials' });
-    }
-
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) {
-      return res.status(401).json({ error: 'Authentication failed' });
+      return res.status(401).json({ error: 'Invalid credentials' });
     }
 
     const isValidPassword = await bcrypt.compare(password, user.password);
     if (!isValidPassword) {
-      return res.status(401).json({ error: 'Authentication failed' });
+      return res.status(401).json({ error: 'Invalid credentials' });
     }
 
     // Check if user is soft-deleted
@@ -78,8 +73,8 @@ router.post('/login', async (req, res, next) => {
 
     const token = jwt.sign(
       { userId: user.id, role: user.role },
-      process.env.JWT_SECRET || 'secret',
-      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+      JWT_SECRET,
+      { expiresIn: JWT_EXPIRES_IN }
     );
 
     res.json({
