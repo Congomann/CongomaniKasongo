@@ -96,8 +96,8 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// API Routes
-app.use('/api/auth', authRoutes);
+// API Routes with rate limiting
+app.use('/api/auth', authLimiter, authRoutes); // Strict rate limit on auth
 app.use('/api/users', userRoutes);
 app.use('/api/leads', leadRoutes);
 app.use('/api/clients', clientRoutes);
