@@ -27,10 +27,8 @@ import portfolioRoutes from './routes/portfolio.routes.js';
 import accountingRoutes from './routes/accounting.routes.js';
 import bankingRoutes from './routes/banking.routes.js';
 
-// Middleware imports
+// Error handler
 import { errorHandler } from './middleware/error.middleware.js';
-import { authLimiter, apiLimiter } from './middleware/rateLimiter.middleware.js';
-import { sanitizeHtml } from './middleware/validation.middleware.js';
 
 dotenv.config();
 
@@ -39,16 +37,59 @@ export const prisma = new PrismaClient();
 
 const PORT = process.env.PORT || 5000;
 
+// Security configuration
+const ALLOWED_ORIGINS = process.env.CORS_ORIGIN 
+  ? process.env.CORS_ORIGIN.split(',') 
+  : ['http://localhost:5173', 'http://localhost:5000'];
+
 // Middleware
-app.use(helmet());
-app.use(compression());
-app.use(morgan('dev'));
-app.use(cors({
-  origin: process.env.CORS_ORIGIN || '*',
-  credentials: true
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'"],
+      imgSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'"],
+      fontSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      mediaSrc: ["'self'"],
+      frameSrc: ["'none'"],
+    },
+  },
+  hsts: {
+    maxAge: 31536000,
+    includeSubDomains: true,
+    preload: true
+  },
 }));
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(compression());
+app.use(morgan('combined')); // More detailed logging for production
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, Postman, etc.)
+    if (!origin) return callback(null, true);
+    
+    if (ALLOWED_ORIGINS.indexOf(origin) !== -1 || ALLOWED_ORIGINS.includes('*')) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
+// Apply rate limiting to all routes
+app.use(apiLimiter);
+
+// Input sanitization
+app.use(sanitizeHtml);
+
+// Body parsing with size limits
+app.use(express.json({ limit: '2mb' })); // Reduced from 10mb for security
+app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 
 // Health check
 app.get('/health', (req, res) => {
