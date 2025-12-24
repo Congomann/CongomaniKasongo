@@ -1,72 +1,58 @@
+// SECURITY NOTE: This file is deprecated for direct API calls
+// All AI requests should now go through the secure backend endpoint: /api/ai/generate
+// The frontend should NEVER have direct access to API keys
 
-import { GoogleGenAI, FunctionDeclaration, Type } from "@google/genai";
 import { Lead, ProductType } from '../types';
-
-const getAiClient = () => {
-  const apiKey = process.env.API_KEY || '';
-  return new GoogleGenAI({ apiKey });
-};
-
-export const analyzeLead = async (lead: Lead): Promise<string> => {
-  try {
-    const ai = getAiClient();
-    const modelId = 'gemini-2.5-flash';
-
-    const prompt = `
-      You are a senior financial advisor assistant. Analyze the following lead for New Holland Financial Group.
-      
-      Lead Name: ${lead.name}
-      Interest: ${lead.interest}
-      Message: "${lead.message}"
-      
-      Provide a structured strategic analysis:
-      
-      1. **Deal Potential**: Estimate value (Low/Medium/High) based on interest type and message tone.
-      2. **Immediate Action**: Suggest the precise next step for the advisor.
-      3. **Cross-Selling Opportunity**: Based on their interest in ${lead.interest}, suggest specific complementary products (e.g., if Life, suggest Annuities or IUL; if Business, suggest Key Person or Cyber Liability).
-      4. **Risk Assessment**: Identify potential red flags, underwriting risks, or compliance concerns evident in the request.
-      
-      Keep the tone professional, insightful, and actionable. Limit response to 150 words.
-    `;
-
-    const response = await ai.models.generateContent({
-      model: modelId,
-      contents: prompt,
-    });
-
-    return response.text || "Could not generate analysis.";
-  } catch (error) {
-    console.error("Gemini analysis failed", error);
-    return "AI Analysis currently unavailable. Please check API Key.";
-  }
-};
 
 export interface ChatHistoryItem {
   role: 'user' | 'model';
   parts: { text: string }[];
 }
 
-// Tool Definition for Lead Intake
-const createLeadTool: FunctionDeclaration = {
-  name: 'createLead',
-  description: 'Save a new potential client lead into the CRM when all necessary information is collected.',
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      name: { type: Type.STRING, description: "The user's full name." },
-      email: { type: Type.STRING, description: "The user's email address." },
-      phone: { type: Type.STRING, description: "The user's phone number." },
-      city: { type: Type.STRING, description: "The city the user lives in." },
-      state: { type: Type.STRING, description: "The state the user lives in (e.g. IA, CA)." },
-      interest: { 
-        type: Type.STRING, 
-        description: "The product they are interested in. Map to one of: Life Insurance, Real Estate, Business Insurance, E&O Insurance, Property Insurance, Securities / Series, Auto Insurance, Commercial Insurance, Annuity, Final Expense",
-        enum: Object.values(ProductType)
+// Secure backend API call
+const callBackendAI = async (prompt: string, context?: string): Promise<string> => {
+  try {
+    const token = localStorage.getItem('token');
+    const response = await fetch('/api/ai/generate', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
       },
-      summary: { type: Type.STRING, description: "A brief summary of their needs or inquiry." }
-    },
-    required: ['name', 'phone', 'interest']
+      body: JSON.stringify({ prompt, context })
+    });
+
+    if (!response.ok) {
+      throw new Error('AI service unavailable');
+    }
+
+    const data = await response.json();
+    return data.text || 'Could not generate response.';
+  } catch (error) {
+    console.error('AI backend error:', error);
+    return 'AI Analysis currently unavailable.';
   }
+};
+
+export const analyzeLead = async (lead: Lead): Promise<string> => {
+  const prompt = `
+    You are a senior financial advisor assistant. Analyze the following lead for New Holland Financial Group.
+    
+    Lead Name: ${lead.name}
+    Interest: ${lead.interest}
+    Message: "${lead.message}"
+    
+    Provide a structured strategic analysis:
+    
+    1. **Deal Potential**: Estimate value (Low/Medium/High) based on interest type and message tone.
+    2. **Immediate Action**: Suggest the precise next step for the advisor.
+    3. **Cross-Selling Opportunity**: Based on their interest in ${lead.interest}, suggest specific complementary products (e.g., if Life, suggest Annuities or IUL; if Business, suggest Key Person or Cyber Liability).
+    4. **Risk Assessment**: Identify potential red flags, underwriting risks, or compliance concerns evident in the request.
+    
+    Keep the tone professional, insightful, and actionable. Limit response to 150 words.
+  `;
+
+  return callBackendAI(prompt);
 };
 
 export const getChatResponse = async (
@@ -74,60 +60,29 @@ export const getChatResponse = async (
   currentMessage: string,
   context: string
 ): Promise<{ text: string, leadData?: any }> => {
-  try {
-    const ai = getAiClient();
-    const modelId = 'gemini-2.5-flash';
+  const systemInstruction = `
+    You are a helpful and professional AI assistant for New Holland Financial Group.
+    
+    **CORE INSTRUCTIONS:**
+    1. **Language Detection:** Detect the user's language (English, Swahili, Spanish) and reply in that language.
+    2. **Lead Intake Goal:** Your primary goal is to collect contact info to have an advisor reach out. 
+       - politely ask for: **Name**, **Phone**, **Email**, **City/State**, and **Product Interest**.
+       - Do not ask for everything at once. Make it a natural conversation.
+    3. **Tone:** Professional, welcoming, and informative.
+    
+    **COMPANY INFORMATION:**
+    ${context}
+    
+    **GUIDELINES:**
+    - If the user asks for a quote, explain that you need their contact info to have a licensed advisor prepare one.
+    - Do not give specific financial advice or binding quotes.
+    - If the user speaks Swahili, use polite and formal Swahili (Kiswahili sanifu).
+  `;
 
-    const systemInstruction = `
-      You are a helpful and professional AI assistant for New Holland Financial Group.
-      
-      **CORE INSTRUCTIONS:**
-      1. **Language Detection:** Detect the user's language (English, Swahili, Spanish) and reply in that language.
-      2. **Lead Intake Goal:** Your primary goal is to collect contact info to have an advisor reach out. 
-         - politely ask for: **Name**, **Phone**, **Email**, **City/State**, and **Product Interest**.
-         - Do not ask for everything at once. Make it a natural conversation.
-         - Once you have the Name, Phone, and Product Interest (minimum), call the 'createLead' tool.
-      3. **Tone:** Professional, welcoming, and informative.
-      
-      **COMPANY INFORMATION:**
-      ${context}
-      
-      **GUIDELINES:**
-      - If the user asks for a quote, explain that you need their contact info to have a licensed advisor prepare one.
-      - Do not give specific financial advice or binding quotes.
-      - If the user speaks Swahili, use polite and formal Swahili (Kiswahili sanifu).
-    `;
+  const historyText = history.map(h => `${h.role}: ${h.parts[0].text}`).join('\n');
+  const fullPrompt = `${systemInstruction}\n\nConversation History:\n${historyText}\n\nUser: ${currentMessage}\n\nAssistant:`;
 
-    // Initialize chat with history
-    const chat = ai.chats.create({
-      model: modelId,
-      config: {
-        systemInstruction: systemInstruction,
-        tools: [{ functionDeclarations: [createLeadTool] }]
-      },
-      history: history,
-    });
-
-    const result = await chat.sendMessage({
-      message: currentMessage,
-    });
-
-    // Check for function calls
-    const toolCalls = result.functionCalls;
-    if (toolCalls && toolCalls.length > 0) {
-      const call = toolCalls[0];
-      if (call.name === 'createLead') {
-        // Return a success message and the data for the UI to process
-        return {
-          text: "Thank you! I've securely received your information. A New Holland advisor will review your needs and contact you shortly.",
-          leadData: call.args
-        };
-      }
-    }
-
-    return { text: result.text || "I apologize, but I am unable to respond at the moment." };
-  } catch (error) {
-    console.error("Gemini chat error:", error);
-    return { text: "I'm having trouble connecting to the server. Please check your internet connection or try again later." };
-  }
+  const responseText = await callBackendAI(fullPrompt, context);
+  
+  return { text: responseText };
 };
