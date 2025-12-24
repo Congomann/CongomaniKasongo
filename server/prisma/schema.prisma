@@ -1,0 +1,625 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== USER MANAGEMENT ====================
+model User {
+  id                 String    @id @default(uuid())
+  email              String    @unique
+  password           String
+  name               String
+  role               String    // ADMIN, MANAGER, SUB_ADMIN, ADVISOR, CLIENT
+  category           String    // INSURANCE, REAL_ESTATE, SECURITIES, MORTGAGE, ADMIN
+  title              String?
+  yearsOfExperience  Int?
+  productsSold       String[]  // Array of ProductTypes
+  languages          String[]
+  micrositeEnabled   Boolean   @default(false)
+  avatar             String?
+  phone              String?
+  bio                String?
+  socialLinks        Json?     // Array of {platform, url}
+  license_state      String?
+  license_states     String[]
+  contractLevel      Float?
+  deletedAt          DateTime?
+  calendarUrl        String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  // Relations
+  leads              Lead[]           @relation("AssignedLeads")
+  clients            Client[]         @relation("AdvisorClients")
+  commissions        Commission[]
+  events             CalendarEvent[]
+  chatsSent          ChatMessage[]    @relation("SentMessages")
+  chatsReceived      ChatMessage[]    @relation("ReceivedMessages")
+  notifications      Notification[]
+  testimonials       Testimonial[]
+  jobApplications    JobApplication[]
+  advisorAssignments AdvisorAssignment[]
+  bankAccounts       BankAccount[]
+  properties         PropertyListing[]
+  transactions       EscrowTransaction[]
+  portfolios         ClientPortfolio[]
+  complianceDocs     ComplianceDocument[]
+  advisoryFees       AdvisoryFee[]
+
+  @@index([email])
+  @@index([role])
+  @@index([deletedAt])
+}
+
+// ==================== LEAD MANAGEMENT ====================
+model Lead {
+  id                  String    @id @default(uuid())
+  name                String
+  email               String
+  phone               String
+  interest            String    // ProductType
+  message             String
+  date                DateTime  @default(now())
+  status              String    // LeadStatus
+  aiAnalysis          String?
+  score               Int       @default(50)
+  qualification       String    @default("Warm") // Hot, Warm, Cold
+  isSimulated         Boolean   @default(false)
+  assignedTo          String?
+  priority            String?   // High, Medium, Low
+  notes               String?
+  source              String?   // company or advisor:ID
+  
+  // Product-specific details
+  lifeDetails         Json?
+  realEstateDetails   Json?
+  securitiesDetails   Json?
+  customDetails       Json?
+  
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  // Relations
+  advisor             User?     @relation("AssignedLeads", fields: [assignedTo], references: [id])
+  applications        Application[]
+
+  @@index([status])
+  @@index([assignedTo])
+  @@index([qualification])
+  @@index([createdAt])
+}
+
+// ==================== CLIENT MANAGEMENT ====================
+model Client {
+  id              String    @id @default(uuid())
+  name            String
+  email           String?
+  phone           String?
+  street          String?
+  city            String?
+  state           String?
+  zip             String?
+  policyNumber    String    @unique
+  premium         Float
+  product         String    // ProductType
+  renewalDate     DateTime
+  commissionAmount Float?
+  carrier         String?
+  advisorId       String?
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // Relations
+  advisor         User?     @relation("AdvisorClients", fields: [advisorId], references: [id])
+  commissions     Commission[]
+
+  @@index([advisorId])
+  @@index([policyNumber])
+}
+
+// ==================== CALLBACK REQUESTS ====================
+model CallbackRequest {
+  id            String    @id @default(uuid())
+  name          String
+  phone         String
+  timeRequested String
+  resolved      Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([resolved])
+}
+
+// ==================== COMMISSIONS ====================
+model Commission {
+  id          String    @id @default(uuid())
+  clientId    String
+  clientName  String
+  product     String    // ProductType
+  premium     Float
+  rate        Float
+  amount      Float
+  date        DateTime  @default(now())
+  status      String    @default("Pending Carrier Payment") // Pending Carrier Payment, Paid, Void
+  advisorId   String?
+  
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Relations
+  client      Client    @relation(fields: [clientId], references: [id])
+  advisor     User?     @relation(fields: [advisorId], references: [id])
+
+  @@index([advisorId])
+  @@index([status])
+  @@index([date])
+}
+
+// ==================== CALENDAR ====================
+model CalendarEvent {
+  id            String    @id @default(uuid())
+  title         String
+  date          DateTime
+  time          String
+  type          String    // meeting, reminder, task, off-day
+  description   String?
+  hasGoogleMeet Boolean   @default(false)
+  userId        String?
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  user          User?     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([date])
+}
+
+// ==================== NOTIFICATIONS ====================
+model Notification {
+  id           String    @id @default(uuid())
+  title        String
+  message      String
+  type         String    // info, success, warning, alert
+  timestamp    DateTime  @default(now())
+  read         Boolean   @default(false)
+  relatedId    String?
+  resourceType String?   // lead, client, event, application, job_application
+  userId       String
+  
+  createdAt    DateTime  @default(now())
+
+  // Relations
+  user         User      @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([read])
+  @@index([timestamp])
+}
+
+// ==================== CHAT ====================
+model ChatMessage {
+  id          String    @id @default(uuid())
+  senderId    String
+  receiverId  String
+  text        String
+  timestamp   DateTime  @default(now())
+  read        Boolean   @default(false)
+  attachment  Json?     // {type, url, name}
+  
+  // Relations
+  sender      User      @relation("SentMessages", fields: [senderId], references: [id])
+  receiver    User      @relation("ReceivedMessages", fields: [receiverId], references: [id])
+
+  @@index([senderId])
+  @@index([receiverId])
+  @@index([timestamp])
+}
+
+// ==================== CARRIER MANAGEMENT ====================
+model Carrier {
+  id          String    @id @default(uuid())
+  name        String    @unique
+  category    String
+  createdAt   DateTime  @default(now())
+  
+  assignments AdvisorAssignment[]
+
+  @@index([category])
+}
+
+model AdvisorAssignment {
+  id          String    @id @default(uuid())
+  advisorId   String
+  carrierId   String
+  carrierName String
+  category    String
+  assignedBy  String
+  assignedAt  DateTime  @default(now())
+  
+  // Relations
+  advisor     User      @relation(fields: [advisorId], references: [id])
+  carrier     Carrier   @relation(fields: [carrierId], references: [id])
+
+  @@unique([advisorId, carrierId])
+  @@index([advisorId])
+}
+
+// ==================== RESOURCES ====================
+model Resource {
+  id          String    @id @default(uuid())
+  title       String
+  type        String    // PDF, Link, Video, Article, Blog, Image, YouTube
+  url         String
+  thumbnail   String?
+  content     String?   // HTML/Markdown for blogs
+  description String?
+  dateAdded   DateTime  @default(now())
+  author      String?
+  likes       Int       @default(0)
+  dislikes    Int       @default(0)
+  shares      Int       @default(0)
+  tags        String[]
+  comments    Json[]    // Array of {id, user, avatar, text, date}
+  
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([type])
+  @@index([dateAdded])
+}
+
+// ==================== TESTIMONIALS ====================
+model Testimonial {
+  id                String    @id @default(uuid())
+  advisorId         String
+  clientName        String
+  rating            Int       // 1-5
+  reviewText        String
+  status            String    @default("pending") // pending, approved, pending_edit
+  date              DateTime  @default(now())
+  
+  // Edit fields
+  editedClientName  String?
+  editedRating      Int?
+  editedReviewText  String?
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // Relations
+  advisor           User      @relation(fields: [advisorId], references: [id])
+
+  @@index([advisorId])
+  @@index([status])
+}
+
+// ==================== JOB APPLICATIONS ====================
+model JobApplication {
+  id            String    @id @default(uuid())
+  fullName      String
+  email         String
+  phone         String
+  address       String
+  licenseNumber String?
+  experience    String
+  status        String    @default("Pending") // Pending, Approved, Rejected
+  date          DateTime  @default(now())
+  resumeName    String?
+  advisorId     String?   // If approved and converted to user
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  convertedUser User?     @relation(fields: [advisorId], references: [id])
+
+  @@index([status])
+  @@index([email])
+}
+
+// ==================== APPLICATIONS (Quote/App/Performance) ====================
+model Application {
+  id            String    @id @default(uuid())
+  leadId        String
+  clientName    String
+  carrier       String
+  policyNumber  String
+  status        String    @default("Pending") // Pending, Underwriting, Approved, Issued, Declined
+  premium       Float
+  commission    Float?
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  lead          Lead      @relation(fields: [leadId], references: [id])
+
+  @@index([leadId])
+  @@index([status])
+}
+
+// ==================== COMPANY SETTINGS ====================
+model CompanySettings {
+  id                    String    @id @default(uuid())
+  phone                 String
+  email                 String
+  address               String
+  city                  String
+  state                 String
+  zip                   String
+  heroBackgroundType    String    @default("image") // image, video, youtube
+  heroBackgroundUrl     String
+  heroVideoPlaylist     String[]
+  archivedVideos        Json[]
+  heroTitle             String?
+  heroSubtitle          String?
+  aboutImageUrl         String?
+  productImages         Json?     // Map of ProductType to Image URL
+  partners              Json?     // Map of Name to Domain or Logo URL
+  hiddenProducts        String[]
+  
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+}
+
+// ==================== REAL ESTATE ====================
+model PropertyListing {
+  id          String    @id @default(uuid())
+  address     String
+  city        String
+  state       String
+  zip         String
+  price       Float
+  type        String    // Residential, Commercial, Land
+  status      String    @default("Active") // Active, Pending, Sold, Off Market
+  bedrooms    Int?
+  bathrooms   Float?
+  sqft        Int?
+  image       String?
+  listedDate  DateTime  @default(now())
+  sellerName  String
+  advisorId   String
+  
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Relations
+  advisor     User      @relation(fields: [advisorId], references: [id])
+
+  @@index([advisorId])
+  @@index([status])
+}
+
+model EscrowTransaction {
+  id              String    @id @default(uuid())
+  propertyId      String
+  propertyAddress String
+  clientName      String
+  role            String    // Buyer, Seller
+  amount          Float
+  status          String    @default("Open") // Open, Closed, Cancelled
+  stage           String    @default("Offer Accepted") // Offer Accepted, Inspection, etc.
+  closingDate     DateTime
+  earnestMoney    Float
+  advisorId       String
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // Relations
+  advisor         User      @relation(fields: [advisorId], references: [id])
+
+  @@index([advisorId])
+  @@index([status])
+}
+
+// ==================== SECURITIES / INVESTMENT ADVISORY ====================
+model ClientPortfolio {
+  id              String    @id @default(uuid())
+  clientId        String
+  clientName      String
+  totalValue      Float
+  ytdReturn       Float
+  riskProfile     String    // Conservative, Moderate, Aggressive, Growth
+  holdings        Json[]    // Array of holdings
+  lastRebalanced  DateTime
+  advisorId       String
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // Relations
+  advisor         User      @relation(fields: [advisorId], references: [id])
+
+  @@index([advisorId])
+}
+
+model ComplianceDocument {
+  id          String    @id @default(uuid())
+  title       String
+  type        String    // Form ADV, KYC, Risk Assessment, etc.
+  clientName  String?
+  uploadDate  DateTime  @default(now())
+  status      String    @default("Valid") // Valid, Expired, Pending Review
+  url         String
+  advisorId   String
+  
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Relations
+  advisor     User      @relation(fields: [advisorId], references: [id])
+
+  @@index([advisorId])
+  @@index([status])
+}
+
+model AdvisoryFee {
+  id            String    @id @default(uuid())
+  clientId      String
+  clientName    String
+  aum           Float     // Assets Under Management
+  feeRate       Float     // e.g. 0.01 for 1%
+  billingPeriod String    // Q1, Q2, Q3, Q4
+  amount        Float
+  status        String    @default("Invoiced") // Invoiced, Paid, Overdue
+  dueDate       DateTime
+  advisorId     String
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  advisor       User      @relation(fields: [advisorId], references: [id])
+
+  @@index([advisorId])
+  @@index([status])
+}
+
+// ==================== ACCOUNTING / BOOKKEEPING ====================
+model Account {
+  id            String    @id @default(uuid())
+  code          String    @unique
+  name          String
+  type          String    // Asset, Liability, Equity, Revenue, Expense
+  category      String    // e.g. "Current Assets", "Operating Expenses"
+  normalBalance String    // debit, credit
+  balance       Float     @default(0)
+  description   String?
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  journalLines  JournalLine[]
+
+  @@index([type])
+  @@index([code])
+}
+
+model JournalEntry {
+  id          String    @id @default(uuid())
+  date        DateTime
+  description String
+  reference   String?   // Invoice #, Check #
+  status      String    @default("posted") // posted, draft, void
+  
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  lines       JournalLine[]
+
+  @@index([date])
+  @@index([status])
+}
+
+model JournalLine {
+  id          String    @id @default(uuid())
+  entryId     String
+  accountId   String
+  debit       Float     @default(0)
+  credit      Float     @default(0)
+  description String?
+  advisorId   String?
+  
+  // Relations
+  entry       JournalEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  account     Account      @relation(fields: [accountId], references: [id])
+
+  @@index([entryId])
+  @@index([accountId])
+}
+
+model TaxConfig {
+  id                  String    @id @default(uuid())
+  name                String
+  rate                Float     // e.g. 0.21 for 21%
+  liabilityAccountId  String
+  expenseAccountId    String
+  state               String
+  
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+}
+
+// ==================== BANKING & EXPENSE TRACKING ====================
+model BankAccount {
+  id              String    @id @default(uuid())
+  userId          String
+  institutionName String
+  accountName     String
+  mask            String    // Last 4 digits
+  type            String    // Checking, Savings, Credit Card
+  balance         Float
+  lastSynced      DateTime  @default(now())
+  status          String    @default("active") // active, error, disconnected
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // Relations
+  user            User      @relation(fields: [userId], references: [id])
+  transactions    BankTransaction[]
+
+  @@index([userId])
+  @@index([status])
+}
+
+model BankTransaction {
+  id              String    @id @default(uuid())
+  bankAccountId   String
+  date            DateTime
+  merchant        String
+  amount          Float     // Negative for expense, Positive for income
+  category        String?
+  status          String    @default("pending") // pending, posted, reconciled
+  receiptUrl      String?
+  journalEntryId  String?
+  isRuleMatch     Boolean   @default(false)
+  matchedRuleId   String?
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // Relations
+  bankAccount     BankAccount @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+
+  @@index([bankAccountId])
+  @@index([status])
+  @@index([date])
+}
+
+model BankRule {
+  id              String    @id @default(uuid())
+  name            String
+  conditions      Json[]    // Array of {field, operator, value}
+  assignCategory  String
+  userId          String    // company or user.id
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([userId])
+}
+
+model ExpenseCategory {
+  id              String    @id @default(uuid())
+  name            String
+  glAccountId     String
+  taxDeductible   Boolean   @default(true)
+  keywords        String[]
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([name])
+}
