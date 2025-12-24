@@ -26,7 +26,6 @@ import propertyRoutes from './routes/property.routes.js';
 import portfolioRoutes from './routes/portfolio.routes.js';
 import accountingRoutes from './routes/accounting.routes.js';
 import bankingRoutes from './routes/banking.routes.js';
-import aiRoutes from './routes/ai.routes.js';
 
 // Error handler
 import { errorHandler } from './middleware/error.middleware.js';
@@ -117,6 +116,7 @@ app.use('/api/properties', propertyRoutes);
 app.use('/api/portfolios', portfolioRoutes);
 app.use('/api/accounting', accountingRoutes);
 app.use('/api/banking', bankingRoutes);
+app.use('/api/ai', aiRoutes);
 
 // Error handling
 app.use(errorHandler);
