@@ -1,78 +1,80 @@
-# Multi-stage Dockerfile for Full Stack NHFG CRM
-
-# Stage 1: Build Frontend
-FROM node:18-alpine AS frontend-build
-WORKDIR /app/frontend
-
-# Copy frontend package files
-COPY package*.json ./
-COPY tsconfig.json ./
-COPY vite.config.ts ./
-COPY index.html ./
-
-# Install frontend dependencies
-RUN npm install
-
-# Copy frontend source code
-COPY App.tsx ./
-COPY index.tsx ./
-COPY types.ts ./
-COPY components/ ./components/
-COPY context/ ./context/
-COPY pages/ ./pages/
-COPY services/ ./services/
+# Multi-stage build for full-stack application
+FROM node:20-alpine AS builder
 
 # Build frontend
-RUN npm run build
-
-# Stage 2: Build Backend
-FROM node:18-alpine AS backend-build
-WORKDIR /app/backend
-
-# Copy backend package files
-COPY server/package*.json ./
-COPY server/tsconfig.json ./
-
-# Install backend dependencies
+WORKDIR /app/client
+COPY package.json ./
 RUN npm install
-
-# Copy backend source code
-COPY server/src/ ./src/
-COPY server/prisma/ ./prisma/
-
-# Generate Prisma Client
-RUN npx prisma generate
+COPY . .
+RUN npm run build
 
 # Build backend
+WORKDIR /app/server
+COPY server/package.json ./
+RUN npm install
+COPY server/ ./
+RUN npx prisma generate
 RUN npm run build
 
-# Stage 3: Production
-FROM node:18-alpine AS production
+# Production stage
+FROM node:20-alpine
+
 WORKDIR /app
 
-# Install production dependencies only
-COPY server/package*.json ./
-RUN npm install --production
+# Install production dependencies for backend
+COPY server/package.json ./server/
+WORKDIR /app/server
+RUN npm install --only=production
 
-# Copy Prisma schema and generate client
-COPY server/prisma/ ./prisma/
-RUN npx prisma generate
+# Copy backend build and prisma
+COPY --from=builder /app/server/dist ./dist
+COPY --from=builder /app/server/prisma ./prisma
+COPY --from=builder /app/server/node_modules/.prisma ./node_modules/.prisma
 
-# Copy built backend
-COPY --from=backend-build /app/backend/dist ./dist
+# Copy frontend build
+COPY --from=builder /app/client/dist /app/client/dist
 
-# Copy built frontend to serve statically
-COPY --from=frontend-build /app/frontend/dist ./dist/public
+# Install nginx to serve frontend and proxy to backend
+RUN apk add --no-cache nginx
 
-# Install serve to host frontend alongside backend
-RUN npm install -g serve
+# Create nginx config
+RUN mkdir -p /run/nginx
+RUN echo 'server { \
+    listen 8080; \
+    server_name _; \
+    \
+    # Remove X-Frame-Options to allow preview mode \
+    proxy_hide_header X-Frame-Options; \
+    add_header X-Frame-Options ""; \
+    \
+    # Serve frontend \
+    location / { \
+        root /app/client/dist; \
+        try_files $uri $uri/ /index.html; \
+    } \
+    \
+    # Proxy API requests to backend \
+    location /api { \
+        proxy_pass http://localhost:3001; \
+        proxy_http_version 1.1; \
+        proxy_set_header Upgrade $http_upgrade; \
+        proxy_set_header Connection "upgrade"; \
+        proxy_set_header Host $host; \
+        proxy_set_header X-Real-IP $remote_addr; \
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for; \
+        proxy_set_header X-Forwarded-Proto $scheme; \
+    } \
+} \
+' > /etc/nginx/http.d/default.conf
 
-# Expose port
-EXPOSE 5000
+# Create startup script
+RUN echo '#!/bin/sh\n\
+cd /app/server\n\
+npx prisma db push --skip-generate &\n\
+node dist/server.js &\n\
+nginx -g "daemon off;"\n\
+' > /app/start.sh && chmod +x /app/start.sh
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:5000/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
+EXPOSE 8080
 
-# Start application
-CMD ["sh", "-c", "npx prisma db push --accept-data-loss && node dist/server.js"]
+CMD ["/app/start.sh"]
